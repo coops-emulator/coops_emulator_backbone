@@ -49,12 +49,33 @@ export function installDomMocks() {
   };
   globalThis.window = globalThis;
 
-  return { appended, head };
+  // URL.createObjectURL/revokeObjectURL don't exist in Node's real URL
+  // class - needed to test EmulatorEngine's File/Blob -> object URL
+  // conversion (see emulator-engine.js bug #5) without a real browser.
+  const createdObjectUrls = [];
+  const originalCreate = globalThis.URL.createObjectURL;
+  const originalRevoke = globalThis.URL.revokeObjectURL;
+  globalThis.URL.createObjectURL = (blob) => {
+    const url = `blob:mock/${createdObjectUrls.length}`;
+    createdObjectUrls.push(url);
+    return url;
+  };
+  globalThis.URL.revokeObjectURL = () => {};
+  globalThis.__restoreObjectUrlMocks = () => {
+    if (originalCreate) globalThis.URL.createObjectURL = originalCreate;
+    else delete globalThis.URL.createObjectURL;
+    if (originalRevoke) globalThis.URL.revokeObjectURL = originalRevoke;
+    else delete globalThis.URL.revokeObjectURL;
+  };
+
+  return { appended, head, createdObjectUrls };
 }
 
 export function resetDomMocks() {
   delete globalThis.document;
   delete globalThis.crossOriginIsolated;
+  globalThis.__restoreObjectUrlMocks?.();
+  delete globalThis.__restoreObjectUrlMocks;
   // Clear any EJS_* globals a test may have set on window/globalThis.
   for (const key of Object.keys(globalThis)) {
     if (key.startsWith("EJS_")) delete globalThis[key];

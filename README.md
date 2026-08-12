@@ -6,6 +6,60 @@ EmulatorJS's actual public contract instead of reimplementing a competing
 (and, in the previous version of this repo, incorrect) Emscripten module
 loader from scratch.
 
+## Update: fixed the "games don't load at all" report
+
+After the write-up below was already in place, a real test against the
+actual reported symptom ("hardly works at all, doesn't load games") turned
+up two more concrete bugs, now fixed with regression tests in
+`test/emulator-engine.test.mjs`:
+
+4. **`EJS_gameUrl` was being set directly to the raw `File` object** from a
+   file `<input>`. Confirmed against a working reference implementation
+   (the `react-emulatorjs` wrapper's own documented example converts via
+   `URL.createObjectURL(file)` first, not a raw File) that this is the
+   reliable, version-independent way to hand EmulatorJS a local file —
+   EmulatorJS's changelog does mention raw File support being added at some
+   point, but that's not something this wrapper can assume every pinned CDN
+   version has. Fixed in `EmulatorEngine._toUrl()`.
+5. **PSP never got `EJS_threads = true` set.** Confirmed against
+   EmulatorJS's own official PSP docs example
+   (`emulatorjs.org/docs/systems/psp/`) that this flag is required
+   explicitly — it is *not* inferred automatically just because
+   `crossOriginIsolated` is true. This wrapper never set it at all before
+   this fix, so PSP could stall waiting on an opt-in prompt that never got
+   shown.
+
+If you pulled this repo before both of these were fixed, that's almost
+certainly why nothing loaded — pull again.
+
+## Update 2: fixed "boots fine but shows a black screen and never plays"
+
+A live console/network log from a real test (Chrome devtools, screenshots
+of the actual run) showed something better than "broken": every request
+succeeded (`loader.js`, `emulator.min.js`, the core itself, all `200`), and
+`EJS_ready` genuinely fired — confirmed by the status text only appearing
+after `loadGame()` resolves. So the loading bugs above were real fixes. But
+the game never actually started, staying on a black canvas. Two more gaps,
+found by comparing against EmulatorJS's own official demo source line by
+line rather than guessing:
+
+6. **`EJS_gameName`/`EJS_gameID` were never set**, causing a console warning
+   (`gameId (EJS_gameID) is not set`). Root cause: a blob: URL (what
+   `_toUrl()` produces for a File/Blob rom) carries no filename of its own.
+   EmulatorJS's own demo sets `EJS_gameName` alongside `EJS_gameUrl`
+   specifically for this reason. Fixed via `EmulatorEngine._deriveGameName()`,
+   which pulls the real name from `File.name` or the URL's last path segment.
+7. **The actual cause of the black screen: `EJS_startOnLoaded` was never
+   set.** Confirmed EmulatorJS's own demo sets `EJS_startOnLoaded = true`
+   explicitly. Without it, EmulatorJS finishes booting and then waits rather
+   than auto-starting — which matches "loads successfully, shows nothing"
+   exactly. Now defaults to `true`; pass `{ startOnLoaded: false }` to
+   `loadGame()` if you want EmulatorJS's own manual start UI instead.
+
+Also fixed in this pass: the example page no longer requires clicking a
+system chip before choosing a ROM — it auto-detects and boots immediately
+when a file extension unambiguously matches one system.
+
 ## This is a rewrite — here's exactly what was wrong and why
 
 I reviewed the original version of this repo by checking its claims against

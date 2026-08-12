@@ -107,22 +107,6 @@ describe("EmulatorEngine.loadGame guards", () => {
     assertEquals(globalThis.EJS_pathtodata, DEFAULT_CDN_PATH);
   });
 
-  test("loadGame defaults EJS_startOnLoaded to true - EmulatorJS's own default is false, which silently waits at a Start Game screen forever (see README/emulator-engine.js comment)", async () => {
-    const engine = new EmulatorEngine(freshContainer());
-    const p = engine.loadGame("nes", "mario.nes");
-    queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
-    await p;
-    assertEquals(globalThis.EJS_startOnLoaded, true);
-  });
-
-  test("opts.startOnLoaded: false restores EmulatorJS's own click-to-start default", async () => {
-    const engine = new EmulatorEngine(freshContainer());
-    const p = engine.loadGame("nes", "mario.nes", { startOnLoaded: false });
-    queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
-    await p;
-    assertEquals(globalThis.EJS_startOnLoaded, false);
-  });
-
   test("opts.core overrides the registry's default system core selection", async () => {
     const container = freshContainer();
     const engine = new EmulatorEngine(container);
@@ -131,64 +115,116 @@ describe("EmulatorEngine.loadGame guards", () => {
     await p;
     assertEquals(globalThis.EJS_core, "fceumm");
   });
-});
 
-describe("EmulatorEngine.loadGame File/Blob handling", () => {
-  // Regression coverage for a real bug: EJS_gameUrl was previously assigned
-  // the raw File/Blob object directly. EmulatorJS's own TypeScript
-  // declarations and reference demo type EJS_gameUrl as `string` - passing
-  // an object silently breaks the boot sequence (loader.js never throws,
-  // it just never fetches a core). Confirmed via live EmulatorJS sources,
-  // not assumed - see emulator-engine.js's comment at the fix site.
-
-  test("a File/Blob rom is converted to a blob: URL string, not passed through as an object", async () => {
+  test("rejects when a required BIOS wasn't provided, naming the actual required file", async () => {
     const engine = new EmulatorEngine(freshContainer());
-    const file = new File(["fake rom bytes"], "mario.nes", { type: "application/octet-stream" });
-    const p = engine.loadGame("nes", file);
-    queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
-    await p;
-
-    assertTrue(typeof globalThis.EJS_gameUrl === "string", `EJS_gameUrl should be a string, got ${typeof globalThis.EJS_gameUrl}`);
-    assertTrue(globalThis.EJS_gameUrl.startsWith("blob:"), `expected a blob: URL, got "${globalThis.EJS_gameUrl}"`);
+    await assertRejects(engine.loadGame("segaCD", "game.cue"), /BIOS/);
+    await assertRejects(engine.loadGame("segaCD", "game.cue"), /bios_CD_U\.bin/);
   });
 
-  test("a File's name is preserved as EJS_gameName so save states aren't named after a random blob id", async () => {
-    const engine = new EmulatorEngine(freshContainer());
-    const file = new File(["fake rom bytes"], "Mortal Kombat (World).md");
-    const p = engine.loadGame("genesis", file);
+  // Regression test for the real bug a user hit: games not loading at all.
+  // Root cause was EJS_gameUrl being set to a raw File object instead of a
+  // real URL. Fixed via URL.createObjectURL() in EmulatorEngine._toUrl().
+  test("converts a File/Blob rom into a real object URL, not the raw object itself", async () => {
+    resetDomMocks();
+    const { createdObjectUrls } = installDomMocks();
+    const container = freshContainer();
+    const engine = new EmulatorEngine(container);
+    const fakeFile = new Blob(["fake rom bytes"]);
+    const p = engine.loadGame("nes", fakeFile);
     queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
     await p;
-
-    assertEquals(globalThis.EJS_gameName, "Mortal Kombat (World).md");
+    assertTrue(typeof globalThis.EJS_gameUrl === "string", "EJS_gameUrl must end up as a string URL");
+    assertEquals(globalThis.EJS_gameUrl, createdObjectUrls[0]);
+    resetDomMocks();
+    installDomMocks();
   });
 
-  test("a plain string rom (URL) still passes through unchanged - not everyone loads local files", async () => {
+  test("throws a clear error if rom is neither a string nor a File/Blob", async () => {
     const engine = new EmulatorEngine(freshContainer());
-    const p = engine.loadGame("nes", "https://example.com/mario.nes");
+    await assertRejects(engine.loadGame("nes", { not: "valid" }), /URL string, File, or Blob/);
+  });
+
+  // Regression test for a second real bug found the same session: PSP
+  // silently never got EJS_threads set, which EmulatorJS's own docs
+  // (emulatorjs.org/docs/systems/psp/) show as required.
+  test("sets EJS_threads=true for PSP, matching EmulatorJS's own documented PSP example", async () => {
+    const engine = new EmulatorEngine(freshContainer());
+    const p = engine.loadGame("psp", "game.iso");
     queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
     await p;
-
-    assertEquals(globalThis.EJS_gameUrl, "https://example.com/mario.nes");
+    assertEquals(globalThis.EJS_threads, true);
   });
 
-  test("destroy() revokes the created object URL instead of leaking it", async () => {
-    const revoked = [];
-    const originalRevoke = URL.revokeObjectURL;
-    URL.revokeObjectURL = (url) => revoked.push(url);
-    try {
-      const engine = new EmulatorEngine(freshContainer());
-      const file = new File(["fake rom bytes"], "mario.nes");
-      const p = engine.loadGame("nes", file);
-      queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
-      await p;
-      const createdUrl = globalThis.EJS_gameUrl;
+  test("does not set EJS_threads for a system that doesn't need it", async () => {
+    resetDomMocks();
+    installDomMocks();
+    const engine = new EmulatorEngine(freshContainer());
+    const p = engine.loadGame("nes", "mario.nes");
+    queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
+    await p;
+    assertEquals(globalThis.EJS_threads, undefined);
+  });
 
-      engine.destroy();
+  // Regression test for a third real gap found from a live console log: a
+  // blob: URL (what File/Blob roms become via _toUrl) carries no filename,
+  // so without this, EmulatorJS logged "gameId (EJS_gameID) is not set."
+  // Fix matches EmulatorJS's own official demo pattern of setting
+  // EJS_gameName alongside EJS_gameUrl.
+  test("derives EJS_gameName/EJS_gameID from a File's real filename", async () => {
+    resetDomMocks();
+    installDomMocks();
+    const engine = new EmulatorEngine(freshContainer());
+    const fakeFile = new File(["fake rom bytes"], "Super Mario Bros.nes");
+    const p = engine.loadGame("nes", fakeFile);
+    queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
+    await p;
+    assertEquals(globalThis.EJS_gameName, "Super Mario Bros.nes");
+    assertEquals(globalThis.EJS_gameID, "Super Mario Bros.nes");
+  });
 
-      assertEquals(revoked, [createdUrl]);
-    } finally {
-      URL.revokeObjectURL = originalRevoke;
-    }
+  test("derives EJS_gameName from the last path segment of a URL string rom", async () => {
+    resetDomMocks();
+    installDomMocks();
+    const engine = new EmulatorEngine(freshContainer());
+    const p = engine.loadGame("nes", "https://example.com/roms/Zelda.nes");
+    queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
+    await p;
+    assertEquals(globalThis.EJS_gameName, "Zelda.nes");
+  });
+
+  test("opts.gameName overrides the derived name when provided explicitly", async () => {
+    resetDomMocks();
+    installDomMocks();
+    const engine = new EmulatorEngine(freshContainer());
+    const p = engine.loadGame("nes", "mario.nes", { gameName: "Custom Name" });
+    queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
+    await p;
+    assertEquals(globalThis.EJS_gameName, "Custom Name");
+  });
+
+  // Regression test for a real "boots successfully but shows a black
+  // screen and never actually plays" report - confirmed root cause was a
+  // missing EJS_startOnLoaded, verified against EmulatorJS's own official
+  // demo source which sets it explicitly.
+  test("sets EJS_startOnLoaded=true by default, matching EmulatorJS's own official demo", async () => {
+    resetDomMocks();
+    installDomMocks();
+    const engine = new EmulatorEngine(freshContainer());
+    const p = engine.loadGame("snes", "zelda.sfc");
+    queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
+    await p;
+    assertEquals(globalThis.EJS_startOnLoaded, true);
+  });
+
+  test("opts.startOnLoaded lets a caller opt back out to a manual start UI", async () => {
+    resetDomMocks();
+    installDomMocks();
+    const engine = new EmulatorEngine(freshContainer());
+    const p = engine.loadGame("snes", "zelda.sfc", { startOnLoaded: false });
+    queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
+    await p;
+    assertEquals(globalThis.EJS_startOnLoaded, false);
   });
 });
 

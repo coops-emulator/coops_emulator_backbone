@@ -66,14 +66,6 @@ export interface LoadGameOptions {
   biosUrl?: string;
   /** Forces a specific core from SystemConfig.cores instead of EmulatorJS's own default pick. */
   core?: string;
-  /**
-   * Defaults to true. EmulatorJS's own documented default is false, which
-   * makes it wait at a "Start Game" screen and do nothing further - no
-   * core fetch, no error - until a person clicks it. loadGame() defaults
-   * this to true so it actually boots automatically; pass false to restore
-   * EmulatorJS's own click-to-start screen instead.
-   */
-  startOnLoaded?: boolean;
 }
 
 export interface SystemListEntry {

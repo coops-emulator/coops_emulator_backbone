@@ -29,7 +29,7 @@
 
   <div id="chips"></div>
 
-  <div id="dropzone">Drop a ROM here — the matching system is picked automatically when unambiguous.</div>
+  <div id="dropzone">Drop a ROM here, or pick a system above then choose a file below.</div>
   <input type="file" id="romInput" />
 
   <div id="game"></div>
@@ -39,66 +39,63 @@
     <button id="btnLoad">📂 Load State</button>
     <button id="btnFullscreen">⛶ Fullscreen</button>
   </div>
-  <div id="status">Drop a ROM, or pick a system above first if you want to force one.</div>
+  <div id="status">Pick a system to begin.</div>
 
   <script type="module">
     import { EmulatorEngine } from "../src/index.js";
 
     const container = document.getElementById("game");
     const status = document.getElementById("status");
-    const chips = document.getElementById("chips");
-    const chipEls = {}; // systemId -> button element, so auto-detect can highlight one
-
     // No pathToData override - loads the real, live EmulatorJS CDN.
     // Pass { pathToData: "/data/" } to use a self-hosted mirror instead
     // (see README "Self-hosting" for exactly what that folder needs).
     const engine = new EmulatorEngine(container);
 
+    const chips = document.getElementById("chips");
     let selectedSystem = null;
     let lastSavedState = null;
-
-    function selectSystem(id) {
-      selectedSystem = id;
-      Object.entries(chipEls).forEach(([sysId, el]) => el.classList.toggle("active", sysId === id));
-    }
 
     for (const { id, label, verified } of EmulatorEngine.listSystems()) {
       const btn = document.createElement("button");
       btn.className = "chip" + (verified ? "" : " unverified");
+      btn.dataset.systemId = id;
       btn.textContent = label;
-      btn.onclick = () => {
-        selectSystem(id);
-        status.textContent = `${label} selected. Choose a ROM file.`;
-      };
-      chipEls[id] = btn;
+      btn.onclick = () => selectSystem(id, btn, `${label} selected. Choose a ROM file.`);
       chips.appendChild(btn);
     }
 
+    function selectSystem(id, btnEl, statusText) {
+      [...chips.children].forEach((c) => c.classList.remove("active"));
+      btnEl?.classList.add("active");
+      selectedSystem = id;
+      if (statusText) status.textContent = statusText;
+    }
+
     async function handleFile(file) {
-      // Manual selection (the person already clicked a chip) always wins -
-      // don't second-guess an explicit choice, even if the extension
-      // suggests something else (e.g. forcing a specific core/variant).
+      // Auto-detect: if the file's extension unambiguously matches exactly
+      // one system, select and boot it immediately - no manual chip click
+      // required. Only fall back to asking when the extension is genuinely
+      // ambiguous (.bin, .cue, .iso match several systems) or unrecognized.
       if (!selectedSystem) {
         const guesses = EmulatorEngine.detectSystem(file.name);
         if (guesses.length === 1) {
-          // Unambiguous match - this is the actual "auto" part of autodetect.
-          // Previously this branch only *displayed* the guess and made the
-          // person click a chip anyway, which isn't autodetect at all.
-          selectSystem(guesses[0]);
-          status.textContent = `Detected ${guesses[0]} from filename. Booting...`;
+          const [id] = guesses;
+          const btnEl = [...chips.children].find((c) => c.dataset.systemId === id);
+          selectSystem(id, btnEl, null); // status gets overwritten by "Booting core..." right below
         } else if (guesses.length > 1) {
-          status.textContent = `Filename is ambiguous between: ${guesses.join(", ")} — pick one above.`;
+          status.textContent = `Ambiguous extension - pick which system: ${guesses.join(", ")}`;
           return;
         } else {
-          status.textContent = "Couldn't detect a system from that filename — pick one above.";
+          status.textContent = "Unrecognized extension - pick a system first.";
           return;
         }
       }
-
       status.textContent = "Booting core...";
       try {
-        // loadGame() converts this File to a blob: URL internally before
-        // handing it to EmulatorJS - see emulator-engine.js's loadGame().
+        // engine.loadGame() converts this File into a real object URL and
+        // derives EJS_gameName/EJS_gameID from file.name internally (see
+        // EmulatorEngine._toUrl / _deriveGameName) - both were real bugs
+        // found from live testing, not something this example handles itself.
         await engine.loadGame(selectedSystem, file);
         status.textContent = `Running ${file.name}`;
       } catch (err) {
