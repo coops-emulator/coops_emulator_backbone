@@ -1,0 +1,21 @@
+# Cloudflare Pages reads a file literally named `_headers` from your build
+# output root and applies these rules automatically - no dashboard config
+# needed. Docs: https://developers.cloudflare.com/pages/configuration/headers/
+#
+# These two headers make the page cross-origin isolated, which is what
+# unlocks SharedArrayBuffer - required for PSP's only available EmulatorJS
+# core build (ppsspp-thread-wasm.data). See README "Cross-origin isolation".
+#
+# IMPORTANT: this project loads EmulatorJS's loader.js and its core/data
+# files from cdn.emulatorjs.org (or your own self-hosted /data/ folder).
+# COEP: require-corp requires every cross-origin resource on the page to
+# either send Cross-Origin-Resource-Policy itself or be fetched with
+# crossorigin="anonymous" (which loads CORS-compatible resources fine).
+# EmulatorJS's CDN has historically served the necessary CORS headers for
+# its own assets, but I have no live network access from this sandboxed
+# environment to re-confirm that today - test PSP specifically after you
+# deploy, and self-host (see README) if you hit a COEP-blocked resource.
+
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp

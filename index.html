@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Emulator Engine — Example (corrected)</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #14121f; color: #eee; margin: 0; padding: 24px; }
+  #chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .chip { padding: 6px 12px; border-radius: 999px; border: 1px solid #7c6af7; background: transparent; color: #eee; cursor: pointer; }
+  .chip.active { background: #7c6af7; }
+  .chip.unverified { border-style: dashed; opacity: 0.7; }
+  #dropzone { border: 2px dashed #7c6af7; border-radius: 12px; padding: 40px; text-align: center; margin-bottom: 16px; }
+  /* EmulatorJS fills this div with its own canvas + UI - it is NOT a <canvas> itself */
+  #game { width: 100%; max-width: 640px; min-height: 480px; background: #000; margin: 0 auto; }
+  #controls { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+  button { background: #262238; color: #eee; border: 1px solid #444; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+  #status { color: #999; font-size: 14px; margin-top: 8px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Emulator Engine — Example</h1>
+  <p style="color:#999;max-width:640px;margin:0 auto 16px">
+    Every system below is currently confirmed against official EmulatorJS
+    docs (last re-checked 2026-08-12 — see README). If a future entry gets
+    added before it's been verified, it'll show here with a dashed border;
+    check <a href="https://emulatorjs.org/docs/systems/" style="color:#7c6af7">emulatorjs.org/docs/systems</a>
+    before relying on one of those.
+  </p>
+
+  <div id="chips"></div>
+
+  <div id="dropzone">Drop a ROM here — the matching system is picked automatically when unambiguous.</div>
+  <input type="file" id="romInput" />
+
+  <div id="game"></div>
+
+  <div id="controls">
+    <button id="btnSave">💾 Save State</button>
+    <button id="btnLoad">📂 Load State</button>
+    <button id="btnFullscreen">⛶ Fullscreen</button>
+  </div>
+  <div id="status">Drop a ROM, or pick a system above first if you want to force one.</div>
+
+  <script type="module">
+    import { EmulatorEngine } from "../src/index.js";
+
+    const container = document.getElementById("game");
+    const status = document.getElementById("status");
+    const chips = document.getElementById("chips");
+    const chipEls = {}; // systemId -> button element, so auto-detect can highlight one
+
+    // No pathToData override - loads the real, live EmulatorJS CDN.
+    // Pass { pathToData: "/data/" } to use a self-hosted mirror instead
+    // (see README "Self-hosting" for exactly what that folder needs).
+    const engine = new EmulatorEngine(container);
+
+    let selectedSystem = null;
+    let lastSavedState = null;
+
+    function selectSystem(id) {
+      selectedSystem = id;
+      Object.entries(chipEls).forEach(([sysId, el]) => el.classList.toggle("active", sysId === id));
+    }
+
+    for (const { id, label, verified } of EmulatorEngine.listSystems()) {
+      const btn = document.createElement("button");
+      btn.className = "chip" + (verified ? "" : " unverified");
+      btn.textContent = label;
+      btn.onclick = () => {
+        selectSystem(id);
+        status.textContent = `${label} selected. Choose a ROM file.`;
+      };
+      chipEls[id] = btn;
+      chips.appendChild(btn);
+    }
+
+    async function handleFile(file) {
+      // Manual selection (the person already clicked a chip) always wins -
+      // don't second-guess an explicit choice, even if the extension
+      // suggests something else (e.g. forcing a specific core/variant).
+      if (!selectedSystem) {
+        const guesses = EmulatorEngine.detectSystem(file.name);
+        if (guesses.length === 1) {
+          // Unambiguous match - this is the actual "auto" part of autodetect.
+          // Previously this branch only *displayed* the guess and made the
+          // person click a chip anyway, which isn't autodetect at all.
+          selectSystem(guesses[0]);
+          status.textContent = `Detected ${guesses[0]} from filename. Booting...`;
+        } else if (guesses.length > 1) {
+          status.textContent = `Filename is ambiguous between: ${guesses.join(", ")} — pick one above.`;
+          return;
+        } else {
+          status.textContent = "Couldn't detect a system from that filename — pick one above.";
+          return;
+        }
+      }
+
+      status.textContent = "Booting core...";
+      try {
+        // loadGame() converts this File to a blob: URL internally before
+        // handing it to EmulatorJS - see emulator-engine.js's loadGame().
+        await engine.loadGame(selectedSystem, file);
+        status.textContent = `Running ${file.name}`;
+      } catch (err) {
+        status.textContent = `⚠️ ${err.message}`;
+      }
+    }
+
+    document.getElementById("romInput").addEventListener("change", (e) => {
+      if (e.target.files[0]) handleFile(e.target.files[0]);
+    });
+
+    const dropzone = document.getElementById("dropzone");
+    dropzone.addEventListener("dragover", (e) => e.preventDefault());
+    dropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    });
+
+    document.getElementById("btnSave").onclick = () => {
+      try {
+        lastSavedState = engine.getStateBytes();
+        status.textContent = `State saved (${lastSavedState.length} bytes, held in memory this session)`;
+      } catch (err) {
+        status.textContent = `⚠️ ${err.message}`;
+      }
+    };
+    document.getElementById("btnLoad").onclick = () => {
+      if (!lastSavedState) { status.textContent = "No state saved yet this session."; return; }
+      try {
+        engine.loadStateBytes(lastSavedState);
+        status.textContent = "State loaded";
+      } catch (err) {
+        status.textContent = `⚠️ ${err.message}`;
+      }
+    };
+    document.getElementById("btnFullscreen").onclick = () => engine.requestFullscreen();
+  </script>
+</body>
+</html>

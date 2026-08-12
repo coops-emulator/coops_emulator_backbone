@@ -1,0 +1,27 @@
+{
+  "name": "coops_emulator_backbone",
+  "version": "2.2.0",
+  "description": "Coops Emulator Backbone — a thin, verified wrapper around EmulatorJS's real loader.js and EJS_* API, covering NES, SNES, GB/GBC/GBA, N64, Genesis, Sega CD, Sega 32X, Saturn, Game Gear, Master System, PS1, PSP, NDS, Atari 2600/7800, Atari Lynx, PC Engine, Neo Geo Pocket, WonderSwan, ColecoVision, 3DO, C64, and Arcade/FBNeo (incl. Neo Geo carts). See README for which entries are fully verified vs. flagged.",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "files": [
+    "src",
+    "deploy",
+    "example",
+    "README.md"
+  ],
+  "scripts": {
+    "example": "npx serve .",
+    "test": "node test/run.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
