@@ -35,6 +35,12 @@ and fixed along the way, if you want the detailed trail.
 - **Real save states** — `getStateBytes()` / `loadStateBytes()` wrap
   EmulatorJS's actual documented `gameManager` API and hand you raw bytes to
   persist however your app wants (your own backend, IndexedDB, wherever).
+- **Per-system rewind tuning, theming, and raw option passthrough** —
+  `loadGame(id, rom, { color, backgroundColor, rewind, defaultOptions })`.
+  Rewind defaults to per-system buffer/granularity profiles in
+  `src/rewind-profiles.js`, ported directly from
+  [ROM Player by Coops](https://romplayerbycoops.pages.dev)'s own live
+  production tuning rather than invented from scratch.
 - **Actionable errors** — missing BIOS, missing cross-origin-isolation
   headers (PSP), unknown system ids, and a stuck/timed-out boot all throw
   clear, specific errors instead of a silent black screen.
@@ -118,7 +124,7 @@ apply to you, same as any EmulatorJS/RetroArch deployment.
 ## Project layout
 
 ```
-src/          the library (import from here) - emulator-engine.js, core-registry.js, index.js, index.d.ts
+src/          the library (import from here) - emulator-engine.js, core-registry.js, rewind-profiles.js, index.js, index.d.ts
 example/      runnable demo (see Quick start above)
 test/         dependency-free unit tests
 e2e/          real-browser Playwright tests

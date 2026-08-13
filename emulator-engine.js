@@ -1,4 +1,5 @@
 import { CORE_REGISTRY, getSystemConfig, detectSystemsByExtension, systemsRequiringThreads } from "./core-registry.js";
+import { getRewindProfile } from "./rewind-profiles.js";
 
 /**
  * emulator-engine.js
@@ -106,10 +107,17 @@ export class EmulatorEngine {
    * @param {object} [opts]
    * @param {string|Blob|File} [opts.biosUrl] - required if cfg.bios.required is true
    * @param {string} [opts.core] - force a specific core from cfg.cores instead of EmulatorJS's default pick
-   * @param {number} [opts.timeoutMs=45000] - how long to wait for EJS_ready before
-   *   rejecting. EmulatorJS has no documented "boot failed" event this wrapper
-   *   could verify, so a timeout is the honest way to surface a stuck boot
-   *   (bad ROM, network failure, wrong system id) instead of hanging forever.
+   * @param {number} [opts.timeoutMs=45000] - how long to wait for EJS_ready before rejecting.
+   * @param {string} [opts.gameName] - overrides the auto-derived EJS_gameName/EJS_gameID.
+   * @param {boolean} [opts.startOnLoaded=true] - auto-start vs EmulatorJS's own manual start UI.
+   * @param {string} [opts.color] - EJS_color, EmulatorJS's accent color theming.
+   * @param {string} [opts.backgroundColor] - EJS_backgroundColor.
+   * @param {boolean|object} [opts.rewind=true] - true for the built-in per-system profile
+   *   (see rewind-profiles.js, ported from ROM Player by Coops's own production tuning),
+   *   false to disable, or `{ bufferSize, granularity }` to override.
+   * @param {object} [opts.defaultOptions] - merged into EJS_defaultOptions (raw libretro
+   *   retroarch cfg keys a core reads on startup) - use this for anything not covered
+   *   by a dedicated option above.
    */
   async loadGame(systemId, rom, opts = {}) {
     if (this._booted) {
@@ -178,6 +186,33 @@ export class EmulatorEngine {
     // this was the actual cause of a "everything loads but the screen stays
     // black" report, distinct from and after the loading bugs fixed above.
     window.EJS_startOnLoaded = opts.startOnLoaded ?? true;
+
+    // Theming - both are plain EmulatorJS options, passed through as-is.
+    if (opts.color) window.EJS_color = opts.color;
+    if (opts.backgroundColor) window.EJS_backgroundColor = opts.backgroundColor;
+
+    // Rewind - defaults to the built-in per-system profile (see
+    // rewind-profiles.js) rather than EmulatorJS's own one-size-fits-all
+    // default, because save-state size varies enormously by system (a PS1
+    // state is MBs, an NES state is KBs) - ROM Player by Coops's own live
+    // production tuning is what these profiles are ported from.
+    if (opts.rewind !== false) {
+      const profile =
+        opts.rewind && typeof opts.rewind === "object"
+          ? { ...getRewindProfile(systemId), ...opts.rewind }
+          : getRewindProfile(systemId);
+      window.EJS_rewindEnabled = true;
+      window.EJS_rewindGranularity = profile.granularity;
+      window.EJS_defaultOptions = Object.assign(window.EJS_defaultOptions || {}, {
+        rewind_enable: "enabled",
+        rewind_buffer_size: String(profile.bufferSize),
+        rewind_granularity: String(profile.granularity),
+      });
+    }
+
+    if (opts.defaultOptions) {
+      window.EJS_defaultOptions = Object.assign(window.EJS_defaultOptions || {}, opts.defaultOptions);
+    }
 
     this.systemId = systemId;
 

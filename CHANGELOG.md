@@ -9,6 +9,28 @@ a plain "v2.0.0 - bug fixes" changelog entry would be.
 
 ---
 
+## Feature parity pass: rewind, theming, defaultOptions
+
+Not a bug fix - a deliberate feature addition, noted here because of how
+it came about. When asked to make ROM Player by Coops "run on" this
+wrapper, reading ROM Player's actual live `index.html` (`launch()`
+function) showed its own hand-rolled EmulatorJS integration was *already
+more advanced* than this wrapper: it already had `EJS_gameName` and
+`EJS_startOnLoaded` (which this wrapper had separately arrived at via its
+own bug-fixing), but also things this wrapper didn't have at all —
+per-system rewind buffer/granularity tuning, `EJS_color`/
+`EJS_backgroundColor` theming, and `EJS_defaultOptions` passthrough for raw
+libretro core options.
+
+Swapping ROM Player onto this wrapper as originally asked would have been
+a regression for a live app with paying subscribers, for no real benefit.
+The useful direction was the reverse: port ROM Player's proven, live,
+production-tested config into the wrapper (`src/rewind-profiles.js`,
+plus new `loadGame()` options), so *future* projects built on this wrapper
+get that tuning for free. ROM Player's own `index.html` was never touched.
+
+---
+
 ## Update: fixed the "games don't load at all" report
 
 After the write-up below was already in place, a real test against the

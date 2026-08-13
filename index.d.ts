@@ -51,6 +51,13 @@ export function systemsRequiringThreads(): SystemId[];
 
 export const DEFAULT_CDN_PATH: string;
 
+export interface RewindProfile {
+  bufferSize: number;
+  granularity: number;
+}
+export const REWIND_PROFILES: Record<string, RewindProfile>;
+export function getRewindProfile(systemId: string): RewindProfile;
+
 export interface EmulatorEngineOptions {
   /**
    * Defaults to DEFAULT_CDN_PATH (the real, public EmulatorJS CDN). Point
@@ -61,11 +68,37 @@ export interface EmulatorEngineOptions {
   pathToData?: string;
 }
 
+export interface RewindOverride {
+  /** Rewind buffer size in MB. */
+  bufferSize?: number;
+  /** Frames between rewind snapshots - lower is smoother, more memory/CPU cost. */
+  granularity?: number;
+}
+
 export interface LoadGameOptions {
-  /** Overrides the BIOS file config's default, if the system needs one. */
-  biosUrl?: string;
+  /** URL string, File, or Blob. Required if the target system's bios.required is true. */
+  biosUrl?: string | File | Blob;
   /** Forces a specific core from SystemConfig.cores instead of EmulatorJS's own default pick. */
   core?: string;
+  /** How long to wait for EJS_ready before rejecting. Default 45000. */
+  timeoutMs?: number;
+  /** Overrides the auto-derived EJS_gameName/EJS_gameID (see EmulatorEngine._deriveGameName). */
+  gameName?: string;
+  /** Auto-start vs EmulatorJS's own manual start UI. Default true. */
+  startOnLoaded?: boolean;
+  /** EJS_color - EmulatorJS's accent color theming. */
+  color?: string;
+  /** EJS_backgroundColor. */
+  backgroundColor?: string;
+  /**
+   * true (default) uses the built-in per-system rewind profile (see
+   * rewind-profiles.js, ported from ROM Player by Coops's own production
+   * tuning); false disables rewind; an object overrides specific fields of
+   * the profile for this call only.
+   */
+  rewind?: boolean | RewindOverride;
+  /** Merged into EJS_defaultOptions (raw libretro retroarch cfg keys). */
+  defaultOptions?: Record<string, string>;
 }
 
 export interface SystemListEntry {

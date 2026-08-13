@@ -8,4 +8,8 @@ console.log("emulator-engine.js (DOM-mocked, not a real browser - see test/dom-m
 await import("./emulator-engine.test.mjs");
 
 console.log("");
+console.log("rewind-profiles.js + theming/rewind/defaultOptions options");
+await import("./rewind-and-theming.test.mjs");
+
+console.log("");
 await run();
