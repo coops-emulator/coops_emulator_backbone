@@ -42,7 +42,14 @@ export const CORE_REGISTRY = {
   nes:          { label: "NES",             system: "nes",         cores: ["nestopia", "fceumm"],       extensions: ["nes", "fds", "unf", "unif"], bios: null, verified: true },
   snes:         { label: "SNES",            system: "snes",        cores: ["snes9x", "bsnes"],           extensions: ["sfc", "smc"],                 bios: null, verified: true },
   gb:           { label: "Game Boy",        system: "gb",          cores: ["gambatte"],                  extensions: ["gb"],                          bios: null, verified: true },
-  gbc:          { label: "Game Boy Color",  system: "gbc",         cores: ["gambatte"],                  extensions: ["gbc"],                         bios: null, verified: true },
+  // NOTE: EmulatorJS has no separate "gbc" system id. Verified against
+  // https://emulatorjs.org/docs/systems/nintendo-game-boy/ (and the GB Color
+  // BIOS section of EmulatorJS's own README) - GB and GBC ROMs both boot
+  // through EJS_core = "gb" via the same gambatte/mgba cores; loader.js picks
+  // GBC mode automatically off the ROM header. Setting system:"gbc" here was
+  // an unverified guess that broke GBC boots (EJS_core="gbc" isn't a real
+  // EmulatorJS system, so loader.js has nothing to fetch) - fixed 2026-08-13.
+  gbc:          { label: "Game Boy Color",  system: "gb",          cores: ["gambatte"],                  extensions: ["gbc"],                         bios: null, verified: true },
   gba:          { label: "GBA",             system: "gba",         cores: ["mgba"],                      extensions: ["gba"],                         bios: { required: false, file: "gba_bios.bin" }, verified: true },
   n64:          { label: "N64",             system: "n64",         cores: ["mupen64plus_next", "parallel_n64"], extensions: ["n64", "z64", "v64"],    bios: null, verified: true },
   genesis:      { label: "Genesis",         system: "segaMD",      cores: ["genesis_plus_gx"],           extensions: ["md", "gen", "bin", "smd"],     bios: null, verified: true },
