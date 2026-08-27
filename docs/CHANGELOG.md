@@ -9,6 +9,62 @@ a plain "v2.0.0 - bug fixes" changelog entry would be.
 
 ---
 
+## v2.4.0 — PSP's real remaining slowness fix: a verified CDN channel override
+
+Context: v2.3.0 disabled rewind for PSP (a real, verified fix for a
+periodic stutter/audio-crackle). After that shipped to production, PSP was
+tested again on real hardware (a MacBook Pro — not underpowered) and
+reported as still just as slow overall. That's important, specific
+information: it means rewind's periodic hitch was never the dominant cost,
+just a real cost. The actual bottleneck was somewhere else.
+
+**The lead:** EmulatorJS's own changelog for a nightly-channel build says
+"Fix hardware rendering for PPSSPP core" and describes PPSSPP as
+"significantly more playable... runs even at 10x fastforward." That's an
+upstream engine fix, not a config tweak — a much better match for sustained
+slowness than anything tunable from this wrapper's side.
+
+**What was verified before shipping anything:** the risk profile of
+EmulatorJS's `nightly` channel (explicitly called unstable, updates daily,
+"cores are not inter-changeable between versions" per their own docs) meant
+this wasn't a change to make blindly. It was scoped to PSP only in ROM
+Player's actual production app first — every other system stayed on
+`stable`, completely unaffected — and tested live before touching this
+library at all.
+
+**The result:** confirmed on the real, live, production site: "much
+better," with only a minor residual audio crackle left over (separate,
+smaller, not yet investigated — worth its own pass if it turns out to be
+fixable, but it doesn't undo the overall win).
+
+**What shipped here:** a new, deliberately small and opt-in module,
+`src/cdn-channels.js`, exporting `CDN_CHANNEL_OVERRIDES` and
+`getPathToData(systemId)`. This does **not** change `EmulatorEngine`'s
+default behavior for anyone — `pathToData` remains exactly the simple,
+constructor-time, tested value it always was (see
+`docs/REFERENCE.md` "PSP's CDN channel" for why it couldn't cleanly become
+automatic without breaking that existing contract). Consumers opt in
+explicitly:
+
+```js
+new EmulatorEngine(container, { pathToData: getPathToData(systemId) });
+```
+
+Covered by 6 new unit tests (`test/cdn-channels.test.mjs`) plus a dedicated
+integration test in `emulator-engine.test.mjs` proving the two pieces
+actually wire together correctly end-to-end, not just that they exist
+independently — total suite now 64/64 passing (was 57/57).
+
+**Not fixed in this pass:** the residual audio crackle mentioned above.
+No diagnosis was attempted — there's no verified lead for it yet the way
+there was for rewind and hardware rendering, and guessing at audio-pipeline
+fixes without evidence is exactly the mistake this project has already
+made once (see the PPSSPP core-options incident, v2.3.0 and ROM Player's
+own history). If this becomes reproducible/diagnosable, it deserves its
+own investigation and its own changelog entry.
+
+---
+
 ## v2.3.0 — PSP rewind disabled by default; credentialless replaces require-corp everywhere
 
 Two separate, real fixes, both found and verified via the same production

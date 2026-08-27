@@ -16,7 +16,7 @@ await engine.loadGame("snes", romFile); // File, Blob, or URL string
 
 **Status:** boots and plays for real — confirmed in a live Chrome session
 (clean network tab, real gameplay, no console errors beyond one harmless
-missing-localization-file warning). 57/57 unit tests passing. See
+missing-localization-file warning). 64/64 unit tests passing. See
 [`docs/CHANGELOG.md`](docs/CHANGELOG.md) for the full history of bugs found
 and fixed along the way, if you want the detailed trail.
 
@@ -97,6 +97,37 @@ PSP's only available core build requires `SharedArrayBuffer`, which needs
 on your page — a real browser requirement, not specific to this project.
 `loadGame("psp", ...)` throws a clear error if those aren't set. Ready-made
 header configs for common hosts are in [`deploy/`](deploy/README.md).
+
+## PSP also runs better on a different CDN channel (optional, verified)
+
+Separately from the headers above: PSP specifically benefits from
+EmulatorJS's `nightly` CDN channel instead of the `stable` one this library
+uses everywhere by default. EmulatorJS's own changelog documents a
+hardware-rendering fix for the PPSSPP core there, and this was independently
+confirmed in production, not just taken on faith — see
+[`src/cdn-channels.js`](src/cdn-channels.js) for the full story including
+the real-world result. This is opt-in — nothing changes unless you ask for
+it:
+
+```js
+import { EmulatorEngine, getPathToData } from "coops_emulator_backbone";
+
+const engine = new EmulatorEngine(container, {
+  pathToData: getPathToData("psp"), // -> nightly for psp, stable for everything else
+});
+await engine.loadGame("psp", rom);
+```
+
+`getPathToData(systemId)` is a plain lookup — call it with any system id and
+it returns the stable public CDN unless that system has a verified,
+documented override (currently just psp). Safe to call unconditionally for
+every system if that's simpler for your code, since non-overridden systems
+just get the same stable path they'd have gotten anyway.
+
+`nightly` updates daily and EmulatorJS's own release notes call it
+explicitly unstable — this trade-off is worth it for PSP specifically
+because that system is often already labeled experimental/beta in
+consuming apps, but it's your call whether to opt in.
 
 ## Self-hosting instead of the public CDN
 

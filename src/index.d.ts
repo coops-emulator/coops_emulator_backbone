@@ -51,6 +51,22 @@ export function systemsRequiringThreads(): SystemId[];
 
 export const DEFAULT_CDN_PATH: string;
 
+/**
+ * Verified per-system CDN channel overrides - see cdn-channels.js for the
+ * full story. Currently only psp has an entry (EmulatorJS's `nightly`
+ * channel, for a documented hardware-rendering fix, confirmed in
+ * production). Opt-in only: pass `getPathToData(systemId)` as `pathToData`
+ * to EmulatorEngine's constructor yourself if you want this - nothing
+ * changes for you otherwise.
+ */
+export const CDN_CHANNEL_OVERRIDES: Record<string, string>;
+/**
+ * Recommended EmulatorJS data path for a given system id - the verified
+ * override if one exists (see CDN_CHANNEL_OVERRIDES), otherwise the
+ * stable public CDN.
+ */
+export function getPathToData(systemId: string): string;
+
 export interface RewindProfile {
   /** Present and true for systems where rewind costs more than it's worth
    *  (currently just psp) - bufferSize/granularity are absent in that case,
@@ -67,7 +83,10 @@ export interface EmulatorEngineOptions {
    * Defaults to DEFAULT_CDN_PATH (the real, public EmulatorJS CDN). Point
    * this at a local folder (e.g. "/data/") to self-host - see README
    * "Self-hosting instead of the public CDN" for exactly what that folder
-   * needs to contain.
+   * needs to contain. If you know in advance which system you're about to
+   * load, consider passing `getPathToData(systemId)` here instead of
+   * leaving this unset - see CDN_CHANNEL_OVERRIDES for why (currently just
+   * a verified PSP-specific improvement, opt-in).
    */
   pathToData?: string;
 }

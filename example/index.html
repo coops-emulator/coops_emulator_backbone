@@ -42,14 +42,23 @@
   <div id="status">Pick a system to begin.</div>
 
   <script type="module">
-    import { EmulatorEngine } from "../src/index.js";
+    import { EmulatorEngine, getPathToData } from "../src/index.js";
 
     const container = document.getElementById("game");
     const status = document.getElementById("status");
-    // No pathToData override - loads the real, live EmulatorJS CDN.
-    // Pass { pathToData: "/data/" } to use a self-hosted mirror instead
-    // (see README "Self-hosting" for exactly what that folder needs).
-    const engine = new EmulatorEngine(container);
+
+    // engine is constructed fresh inside handleFile() below, once the
+    // system to load is actually known - not here. Two reasons:
+    //   1. loadGame() can only be called once per instance ever (see
+    //      emulator-engine.test.mjs "single boot per page load") - a demo
+    //      that lets you try several systems needs a fresh instance per
+    //      attempt, not one shared instance reused across chip clicks.
+    //   2. getPathToData(systemId) (new in v2.4.0 - see README "PSP also
+    //      runs better on a different CDN channel") needs to know which
+    //      system is about to load to pick the right CDN path, and that
+    //      isn't known yet at page-load time, only after the user picks
+    //      a chip.
+    let engine = null;
 
     const chips = document.getElementById("chips");
     let selectedSystem = null;
@@ -92,6 +101,17 @@
       }
       status.textContent = "Booting core...";
       try {
+        // Tear down any previous boot before starting a new one - same
+        // container, fresh instance every time (see the `engine` comment
+        // above for why one shared instance across multiple loads doesn't
+        // work). destroy() is safe to call even if this is the very first
+        // load and engine is still null - see the guard below.
+        engine?.destroy();
+        // getPathToData(selectedSystem) - see README "PSP also runs better
+        // on a different CDN channel" - returns the verified nightly
+        // override for psp, or the same stable path every other system
+        // already got, so this is always safe to call unconditionally.
+        engine = new EmulatorEngine(container, { pathToData: getPathToData(selectedSystem) });
         // engine.loadGame() converts this File into a real object URL and
         // derives EJS_gameName/EJS_gameID from file.name internally (see
         // EmulatorEngine._toUrl / _deriveGameName) - both were real bugs
@@ -115,6 +135,7 @@
     });
 
     document.getElementById("btnSave").onclick = () => {
+      if (!engine) { status.textContent = "Load a game first."; return; }
       try {
         lastSavedState = engine.getStateBytes();
         status.textContent = `State saved (${lastSavedState.length} bytes, held in memory this session)`;
@@ -123,6 +144,7 @@
       }
     };
     document.getElementById("btnLoad").onclick = () => {
+      if (!engine) { status.textContent = "Load a game first."; return; }
       if (!lastSavedState) { status.textContent = "No state saved yet this session."; return; }
       try {
         engine.loadStateBytes(lastSavedState);
@@ -131,7 +153,10 @@
         status.textContent = `⚠️ ${err.message}`;
       }
     };
-    document.getElementById("btnFullscreen").onclick = () => engine.requestFullscreen();
+    document.getElementById("btnFullscreen").onclick = () => {
+      if (!engine) { status.textContent = "Load a game first."; return; }
+      engine.requestFullscreen();
+    };
   </script>
 </body>
 </html>

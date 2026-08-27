@@ -12,4 +12,8 @@ console.log("rewind-profiles.js + theming/rewind/defaultOptions options");
 await import("./rewind-and-theming.test.mjs");
 
 console.log("");
+console.log("cdn-channels.js");
+await import("./cdn-channels.test.mjs");
+
+console.log("");
 await run();

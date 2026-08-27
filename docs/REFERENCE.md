@@ -96,6 +96,55 @@ Ready-made configs for four common setups are in `deploy/` — Cloudflare
 Pages, Netlify, nginx, and Express. See `deploy/README.md` for which one to
 use and the full credentialless-vs-require-corp reasoning.
 
+## PSP's CDN channel (optional, verified 2026-08-27)
+
+Separate from the header requirement above: PSP specifically runs better on
+EmulatorJS's `nightly` CDN channel (`https://cdn.emulatorjs.org/nightly/data/`)
+than the `stable` channel (`https://cdn.emulatorjs.org/stable/data/`) this
+engine uses everywhere by default.
+
+**Why:** EmulatorJS's own changelog for the relevant nightly build says
+"Fix hardware rendering for PPSSPP core" and describes PPSSPP as
+"significantly more playable" as a direct result
+(https://emulatorjs.org/docs/changelog/). That claim was independently
+confirmed, not just taken on faith: ROM Player by Coops (the production app
+this engine's tuning is ported from) shipped PSP-only on `nightly` and a
+real user on real hardware (a MacBook Pro, not a low-power device) reported
+a meaningful improvement on the actual live production site — "much
+better," in their words, with only a minor residual audio crackle left
+over. That crackle is a separate, smaller, not-yet-investigated issue; it
+does not undo the overall improvement.
+
+**How:** `getPathToData(systemId)` returns the verified override for a
+system id if one exists (currently just `psp`), or the stable CDN path
+otherwise:
+
+```js
+import { EmulatorEngine, getPathToData } from "coops_emulator_backbone";
+
+const engine = new EmulatorEngine(container, {
+  pathToData: getPathToData(systemId),
+});
+await engine.loadGame(systemId, rom);
+```
+
+**This is opt-in, not automatic**, and deliberately so: `pathToData` is
+resolved once, at construction, before `loadGame()` even knows which system
+is about to load (see `EmulatorEngineOptions.pathToData` and the tests in
+`emulator-engine.test.mjs` that assert this immediately after construction)
+— there was no way to make this "automatically smart per system" without
+either breaking that existing, tested contract, or restructuring when
+`pathToData` gets resolved. A small standalone helper that you opt into
+explicitly was the design that didn't require compromising anything already
+working. See `src/cdn-channels.js` for the full reasoning and exact URLs.
+
+**The real risk, stated plainly:** `nightly` updates daily and EmulatorJS's
+own release notes call it explicitly unstable ("cores are not
+inter-changeable between versions... things may break"). This override
+exists for PSP specifically because that trade-off has already been made
+and verified for that one system — it is not a general recommendation to
+run everything on nightly.
+
 ## Self-hosting instead of the public CDN
 
 By default this engine points `EJS_pathtodata` at

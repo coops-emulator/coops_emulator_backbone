@@ -126,6 +126,34 @@ describe("EmulatorEngine.loadGame guards", () => {
     assertEquals(globalThis.EJS_pathtodata, DEFAULT_CDN_PATH);
   });
 
+  test("recommended pattern: getPathToData(systemId) passed as pathToData actually reaches EJS_pathtodata", async () => {
+    // Integration test, not just a unit test on cdn-channels.js in
+    // isolation - this proves the two pieces actually wire together the
+    // way the docs/README tell consumers to use them, using the exact
+    // pattern ROM Player by Coops uses in production.
+    resetDomMocks();
+    installDomMocks();
+    const { getPathToData } = await import("../src/cdn-channels.js");
+
+    const pspContainer = freshContainer("psp-player");
+    const pspEngine = new EmulatorEngine(pspContainer, { pathToData: getPathToData("psp") });
+    assertEquals(pspEngine.pathToData, "https://cdn.emulatorjs.org/nightly/data/");
+    const p1 = pspEngine.loadGame("psp", "game.iso");
+    queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
+    await p1;
+    assertEquals(globalThis.EJS_pathtodata, "https://cdn.emulatorjs.org/nightly/data/");
+
+    resetDomMocks();
+    installDomMocks();
+    const nesContainer = freshContainer("nes-player");
+    const nesEngine = new EmulatorEngine(nesContainer, { pathToData: getPathToData("nes") });
+    assertEquals(nesEngine.pathToData, DEFAULT_CDN_PATH);
+    const p2 = nesEngine.loadGame("nes", "mario.nes");
+    queueMicrotask(() => globalThis.EJS_ready && globalThis.EJS_ready());
+    await p2;
+    assertEquals(globalThis.EJS_pathtodata, DEFAULT_CDN_PATH);
+  });
+
   test("opts.core overrides the registry's default system core selection", async () => {
     const container = freshContainer();
     const engine = new EmulatorEngine(container);
