@@ -16,7 +16,7 @@ await engine.loadGame("snes", romFile); // File, Blob, or URL string
 
 **Status:** boots and plays for real — confirmed in a live Chrome session
 (clean network tab, real gameplay, no console errors beyond one harmless
-missing-localization-file warning). 42/42 unit tests passing. See
+missing-localization-file warning). 57/57 unit tests passing. See
 [`docs/CHANGELOG.md`](docs/CHANGELOG.md) for the full history of bugs found
 and fixed along the way, if you want the detailed trail.
 
@@ -40,7 +40,11 @@ and fixed along the way, if you want the detailed trail.
   Rewind defaults to per-system buffer/granularity profiles in
   `src/rewind-profiles.js`, ported directly from
   [ROM Player by Coops](https://romplayerbycoops.pages.dev)'s own live
-  production tuning rather than invented from scratch.
+  production tuning rather than invented from scratch — including PSP's
+  profile, which disables rewind entirely rather than tuning it, since its
+  full-state (CPU + VRAM + texture cache) snapshot cost outweighs the
+  benefit on that core specifically. Override with `{ rewind: { disabled:
+  false, ... } }` if you want it back.
 - **Actionable errors** — missing BIOS, missing cross-origin-isolation
   headers (PSP), unknown system ids, and a stuck/timed-out boot all throw
   clear, specific errors instead of a silent black screen.

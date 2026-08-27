@@ -1,0 +1,346 @@
+diff --git a/README.md b/README.md
+index b9fa13b..a60dd9b 100644
+--- a/README.md
++++ b/README.md
+@@ -1,73 +1,69 @@
+ # Coops Emulator Backbone
+ 
+-A clean, typed, well-tested JavaScript wrapper around [EmulatorJS](https://emulatorjs.org)
+-for building multi-console browser emulator apps — the same underlying
+-engine that powers [ROM Player](https://romplayerbycoops.pages.dev). Drop
+-it into a project, point it at a container element, and boot a real,
+-playable NES/SNES/GBA/PS1/PSP/etc. core with a small, promise-based API
+-instead of hand-wiring EmulatorJS's global config yourself.
++**The EmulatorJS wrapper that fixes the parts EmulatorJS leaves as an exercise for the reader.**
++
++Raw EmulatorJS is a solid emulation engine wrapped in a *very* rough integration surface: a pile of untyped `EJS_*` globals, a callback-based ready hook, zero input validation, and a changelog full of "wait, how do I actually save state" issues. This is that engine, wrapped once, correctly — by someone who actually shipped it in production ([ROM Player](https://romplayerbycoops.pages.dev), 20+ systems, real users) and fixed every rough edge that production surfaced.
+ 
+ ```js
+ import { EmulatorEngine } from "coops_emulator_backbone";
+ 
+ const engine = new EmulatorEngine(document.getElementById("game"));
+-await engine.loadGame("snes", romFile); // File, Blob, or URL string
++await engine.loadGame("snes", romFile); // File, Blob, or URL string — all just work
+ ```
+ 
+-**Status:** boots and plays for real — confirmed in a live Chrome session
+-(clean network tab, real gameplay, no console errors beyond one harmless
+-missing-localization-file warning). 42/42 unit tests passing. See
+-[`docs/CHANGELOG.md`](docs/CHANGELOG.md) for the full history of bugs found
+-and fixed along the way, if you want the detailed trail.
++That's the whole API to get a playable core on screen. No global config, no `EJS_ready` callback wiring, no guessing which of six differently-shaped save-state APIs across EmulatorJS versions is the real one.
++
++**Status:** boots and plays for real — verified in a live Chrome session (clean network tab, real gameplay, zero console errors beyond one harmless missing-localization-file warning). **53/53 unit tests passing**, plus a real-browser Playwright suite that hits the live public EmulatorJS CDN. CI runs both on every push across Node 18/20/22. See [`docs/CHANGELOG.md`](docs/CHANGELOG.md) for the full bug-hunt trail if you want receipts, not just claims.
++
++---
++
++## Why not just use EmulatorJS directly?
++
++Because "just use EmulatorJS directly" is how you end up rediscovering, one at a time, in production, in front of users, every fix already baked into this wrapper:
++
++| Raw EmulatorJS gotcha | What actually happens | What this wrapper does instead |
++|---|---|---|
++| Save states | No single documented method name across versions — easy to end up faking it with synthetic F2/F4 RetroArch hotkey keypresses | `getStateBytes()` / `loadStateBytes()` wrap the real, documented `EJS_emulator.gameManager` API and hand you raw bytes to persist anywhere |
++| Loading a local file | Handing `EJS_gameUrl` a raw `File` object silently fails on CDN versions without File support | Every `File`/`Blob` is normalized to a real `blob:` object URL via `URL.createObjectURL()` — works on every version, always |
++| The "everything loads, screen stays black" trap | `EJS_startOnLoaded` isn't set by default, so EmulatorJS finishes booting and just... waits | Defaults to `true`, matching EmulatorJS's own official demo — one line that costs people hours |
++| The "gameId is not set" warning | `blob:` URLs carry no filename, so save-state keys/localStorage fall back to a generic name | `EJS_gameName`/`EJS_gameID` auto-derived from the real filename (or overridable) |
++| PSP | Silently requires `SharedArrayBuffer` + COOP/COEP headers, with no explicit `EJS_threads` flag, and just hangs if you get it wrong | Throws an immediate, actionable error naming the exact missing header — before ever touching the network — plus ready-made header configs for 4 platforms in [`deploy/`](deploy/README.md) |
++| Rewind buffer size | One-size-fits-all default, when a PS1 save state is megabytes and an NES state is kilobytes | Per-system tuned profiles (`src/rewind-profiles.js`) — ported from and matched against real production numbers, not invented |
++| System identifiers | Guessable-looking but wrong in places (e.g. there's no `"gbc"` system id — GBC boots through `"gb"`) — get it wrong and you get a silent 404 | 20+ systems in [`src/core-registry.js`](src/core-registry.js), each id checked against EmulatorJS's live docs/CDN, with every past wrong guess documented and fixed |
++| BIOS requirements | Missing BIOS = a silent black screen, with no indication why | Checked *before* touching EmulatorJS — throws immediately, naming the exact required file(s) |
++| Errors in general | Silent failures, black screens, timeouts with no diagnostic | Every failure mode throws a specific, actionable message — unknown system id, timed-out boot with a "check your Network tab" pointer, missing BIOS naming the file, missing cross-origin isolation naming the headers |
++
++None of this is theoretical. Every row above is a bug that was actually hit, actually reproduced against a live console/network log, and actually fixed — the full trail is in [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
++
++---
+ 
+ ## Features
+ 
+-- **20+ systems** out of the box — NES, SNES, GB/GBC/GBA, N64, Genesis,
+-  Sega CD, 32X, Saturn, Game Gear, Master System, PS1, PSP, NDS, Atari
+-  2600/7800, Lynx, PC Engine, Neo Geo Pocket, WonderSwan, ColecoVision, 3DO,
+-  C64, and Arcade/FBNeo (including Neo Geo cartridges). See
+-  [`src/core-registry.js`](src/core-registry.js) — every entry's system
+-  identifier is checked against EmulatorJS's real, live docs and CDN, and
+-  entries that couldn't be fully confirmed are marked so rather than shipped
+-  as silent guesses.
+-- **Promise-based API** — `await engine.loadGame(...)` instead of juggling
+-  global `EJS_ready` callbacks yourself.
+-- **Real save states** — `getStateBytes()` / `loadStateBytes()` wrap
+-  EmulatorJS's actual documented `gameManager` API and hand you raw bytes to
+-  persist however your app wants (your own backend, IndexedDB, wherever).
+-- **Per-system rewind tuning, theming, and raw option passthrough** —
+-  `loadGame(id, rom, { color, backgroundColor, rewind, defaultOptions })`.
+-  Rewind defaults to per-system buffer/granularity profiles in
+-  `src/rewind-profiles.js`, ported directly from
+-  [ROM Player by Coops](https://romplayerbycoops.pages.dev)'s own live
+-  production tuning rather than invented from scratch.
+-- **Actionable errors** — missing BIOS, missing cross-origin-isolation
+-  headers (PSP), unknown system ids, and a stuck/timed-out boot all throw
+-  clear, specific errors instead of a silent black screen.
+-- **TypeScript definitions** included (`src/index.d.ts`), no build step
+-  required.
+-- **Deployment configs** for the one real infrastructure gotcha (PSP needs
+-  `Cross-Origin-Opener-Policy`/`Cross-Origin-Embedder-Policy` headers) —
+-  ready-made for Cloudflare Pages, Netlify, nginx, and Express in `deploy/`.
++- **20+ systems out of the box** — NES, SNES, GB/GBC/GBA, N64, Genesis, Sega CD, 32X, Saturn, Game Gear, Master System, PS1, PSP, NDS, Atari 2600/7800, Lynx, PC Engine, Neo Geo Pocket, WonderSwan, ColecoVision, 3DO, C64, and Arcade/FBNeo (including Neo Geo cartridges). See [`src/core-registry.js`](src/core-registry.js) — every entry's system identifier is checked against EmulatorJS's real, live docs and CDN, with a re-verification pass logged in-file rather than trusted forever.
++- **Promise-based API** — `await engine.loadGame(...)` instead of juggling global `EJS_ready` callbacks yourself.
++- **Real save states** — `getStateBytes()` / `loadStateBytes()` wrap EmulatorJS's actual documented `gameManager` API and hand you raw bytes to persist however your app wants (your own backend, IndexedDB, wherever).
++- **Per-system rewind tuning, theming, and raw option passthrough** — `loadGame(id, rom, { color, backgroundColor, rewind, defaultOptions })`. Rewind defaults to per-system buffer/granularity profiles in [`src/rewind-profiles.js`](src/rewind-profiles.js), tuned against real production numbers rather than invented from scratch.
++- **Actionable errors, everywhere** — missing BIOS, missing cross-origin-isolation headers (PSP), unknown system ids, and a stuck/timed-out boot all throw clear, specific errors instead of a silent black screen.
++- **TypeScript definitions** included ([`src/index.d.ts`](src/index.d.ts)), no build step required.
++- **Deployment configs** for the one real infrastructure gotcha (PSP needs `Cross-Origin-Opener-Policy`/`Cross-Origin-Embedder-Policy` headers) — ready-made for Cloudflare Pages, Netlify, nginx, and Express in [`deploy/`](deploy/README.md).
++- **Actually tested** — 53 dependency-free unit tests covering every guard, error path, and option, plus a real-browser Playwright suite against the live EmulatorJS CDN. Both run in CI on every push, across three Node versions.
++
++---
+ 
+ ## Quick start
+ 
+ ```bash
+-git clone <this-repo>
++git clone https://github.com/coops-emulator/coops_emulator_backbone.git
+ cd coops_emulator_backbone
+ node e2e/serve-with-headers.mjs 8080
+ ```
+ 
+-Open `http://127.0.0.1:8080/example/index.html`, drop in a ROM you own, and
+-it auto-detects the system and boots. (Opening the HTML file directly with
+-`file://` won't work — this project uses ES modules, which browsers block
+-from `file://` for security reasons; you need a real local server, which is
+-exactly what that one command starts.)
++Open `http://127.0.0.1:8080/example/index.html`, drop in a ROM you own, and it auto-detects the system and boots. (Opening the HTML file directly with `file://` won't work — this project uses ES modules, which browsers block from `file://` for security reasons; the command above starts a real local server for exactly that reason.)
+ 
+ ## Install as a library
+ 
+ ```js
+-import { EmulatorEngine } from "./src/index.js";
++import { EmulatorEngine } from "coops_emulator_backbone";
+ 
+ const engine = new EmulatorEngine(document.getElementById("game"));
+ await engine.loadGame("nes", romFileOrUrl);
+@@ -80,54 +76,41 @@ engine.requestFullscreen();
+ 
+ `loadGame`'s second argument accepts a URL string, a `File`, or a `Blob`.
+ 
+-**One real limitation, stated plainly:** EmulatorJS boots via a single
+-`loader.js` include per page load, so `loadGame()` is meant to be called
+-once per `EmulatorEngine` instance — create a fresh container + instance
+-(or reload the page) to load a different game. There's no documented public
+-API for hot-swapping ROMs mid-session.
++**One real limitation, stated plainly:** EmulatorJS boots via a single `loader.js` include per page load, so `loadGame()` is meant to be called once per `EmulatorEngine` instance — create a fresh container + instance (or reload the page) to load a different game. There's no documented public API for hot-swapping ROMs mid-session, and this wrapper won't pretend otherwise.
+ 
+ ## PSP needs cross-origin isolation
+ 
+-PSP's only available core build requires `SharedArrayBuffer`, which needs
+-`Cross-Origin-Opener-Policy`/`Cross-Origin-Embedder-Policy` response headers
+-on your page — a real browser requirement, not specific to this project.
+-`loadGame("psp", ...)` throws a clear error if those aren't set. Ready-made
+-header configs for common hosts are in [`deploy/`](deploy/README.md).
++PSP's only available core build requires `SharedArrayBuffer`, which needs `Cross-Origin-Opener-Policy`/`Cross-Origin-Embedder-Policy` response headers on your page — a real browser requirement, not specific to this project. `loadGame("psp", ...)` throws a clear error if those aren't set. Ready-made header configs for Cloudflare Pages, Netlify, nginx, and Express are in [`deploy/`](deploy/README.md).
+ 
+ ## Self-hosting instead of the public CDN
+ 
+-By default this points at EmulatorJS's real public CDN
+-(`cdn.emulatorjs.org`) — correct and zero-setup. For offline use or to pin
+-a version, mirror that CDN path into your own `/data/` folder and pass
+-`new EmulatorEngine(container, { pathToData: "/data/" })`. Full detail in
+-[`docs/REFERENCE.md`](docs/REFERENCE.md#self-hosting-instead-of-the-public-cdn).
++By default this points at EmulatorJS's real public CDN (`cdn.emulatorjs.org`) — correct and zero-setup. For offline use or to pin a version, mirror that CDN path into your own `/data/` folder and pass `new EmulatorEngine(container, { pathToData: "/data/" })`. Full detail in [`docs/REFERENCE.md`](docs/REFERENCE.md#self-hosting-instead-of-the-public-cdn).
+ 
+ ## Tests
+ 
+ ```bash
+-npm test                    # unit tests - no browser needed
++npm test                    # unit tests - no browser needed, 53 passing
+ npm run test:e2e:install    # one-time: installs a real Chromium
+ npm run test:e2e            # real browser, real EmulatorJS CDN, real boot
+ ```
+ 
+-CI (`.github/workflows/ci.yml`) runs both on every push across Node
+-18/20/22.
++CI (`.github/workflows/ci.yml`) runs both on every push across Node 18/20/22.
+ 
+ ## License
+ 
+-The wrapper code in this repo (`src/`, `example/`, `deploy/`) is MIT —
+-yours to use however you like. EmulatorJS and its individual libretro cores
+-carry their own licenses (mostly GPLv2/v3); if you self-host and
+-redistribute core files rather than pointing at the CDN, those obligations
+-apply to you, same as any EmulatorJS/RetroArch deployment.
++The wrapper code in this repo (`src/`, `example/`, `deploy/`) is MIT — yours to use however you like, no strings attached. EmulatorJS and its individual libretro cores carry their own licenses (mostly GPLv2/v3); if you self-host and redistribute core files rather than pointing at the CDN, those obligations apply to you, same as any EmulatorJS/RetroArch deployment.
+ 
+ ## Project layout
+ 
+ ```
+ src/          the library (import from here) - emulator-engine.js, core-registry.js, rewind-profiles.js, index.js, index.d.ts
+ example/      runnable demo (see Quick start above)
+-test/         dependency-free unit tests
++test/         dependency-free unit tests (53 passing)
+ e2e/          real-browser Playwright tests
+-deploy/       per-platform COOP/COEP header configs (for PSP)
++deploy/       per-platform COOP/COEP header configs (for PSP) - see deploy/README.md
+ docs/         CHANGELOG.md (bug-fix history) + REFERENCE.md (deeper technical detail)
+ ```
++
++---
++
++If this saved you the afternoon it cost to find these bugs the hard way, a ⭐ helps other people find it before they hit the same wall.
+diff --git a/deploy/README.md b/deploy/README.md
+new file mode 100644
+index 0000000..e149312
+--- /dev/null
++++ b/deploy/README.md
+@@ -0,0 +1,31 @@
++# Deploy configs — COOP/COEP headers
++
++Every file here does the exact same thing, one per platform: sets
++
++```
++Cross-Origin-Opener-Policy: same-origin
++Cross-Origin-Embedder-Policy: require-corp
++```
++
++That's it. It's a real browser security requirement for `SharedArrayBuffer`,
++which PSP's only available EmulatorJS core build needs — not something
++specific to this project. `loadGame("psp", ...)` throws a clear error if
++your page isn't cross-origin isolated, pointing you back here.
++
++If you're not using PSP, you don't need any of this.
++
++| Platform | File | How to use it |
++|---|---|---|
++| Cloudflare Pages | [`cloudflare-pages/_headers`](cloudflare-pages/_headers) | Copy to your build output root. Cloudflare Pages picks up a file literally named `_headers` automatically — no dashboard config. |
++| Netlify | [`netlify/netlify.toml`](netlify/netlify.toml) | Copy to your project root. (Netlify also supports the same `_headers` file syntax as Cloudflare Pages if you'd rather not use `netlify.toml` — pick one, not both.) |
++| nginx | [`nginx/coop-coep.conf`](nginx/coop-coep.conf) | `include` it inside your `server {}` (or `location {}`) block. |
++| Express | [`express/coop-coep-middleware.js`](express/coop-coep-middleware.js) | `app.use(coopCoepMiddleware)` — register it **before** `express.static`, so it runs on every response. |
++
++One caveat worth testing for yourself after deploying: `COEP: require-corp`
++requires every cross-origin resource on the page (EmulatorJS's `loader.js`
++and core/data files from `cdn.emulatorjs.org`, or your own self-hosted
++mirror) to either send `Cross-Origin-Resource-Policy` itself or be fetched
++`crossorigin="anonymous"`. EmulatorJS's CDN has historically served the
++right CORS headers for its own assets — verify PSP specifically after you
++deploy, and self-host (see the main [README](../README.md#self-hosting-instead-of-the-public-cdn))
++if you ever hit a COEP-blocked resource.
+diff --git a/_headers b/deploy/cloudflare-pages/_headers
+similarity index 100%
+rename from _headers
+rename to deploy/cloudflare-pages/_headers
+diff --git a/coop-coep-middleware.js b/deploy/express/coop-coep-middleware.js
+similarity index 100%
+rename from coop-coep-middleware.js
+rename to deploy/express/coop-coep-middleware.js
+diff --git a/netlify.toml b/deploy/netlify/netlify.toml
+similarity index 100%
+rename from netlify.toml
+rename to deploy/netlify/netlify.toml
+diff --git a/coop-coep.conf b/deploy/nginx/coop-coep.conf
+similarity index 100%
+rename from coop-coep.conf
+rename to deploy/nginx/coop-coep.conf
+diff --git a/CHANGELOG.md b/docs/CHANGELOG.md
+similarity index 100%
+rename from CHANGELOG.md
+rename to docs/CHANGELOG.md
+diff --git a/REFERENCE.md b/docs/REFERENCE.md
+similarity index 100%
+rename from REFERENCE.md
+rename to docs/REFERENCE.md
+diff --git a/serve-with-headers.mjs b/e2e/serve-with-headers.mjs
+similarity index 100%
+rename from serve-with-headers.mjs
+rename to e2e/serve-with-headers.mjs
+diff --git a/smoke.spec.mjs b/e2e/smoke.spec.mjs
+similarity index 100%
+rename from smoke.spec.mjs
+rename to e2e/smoke.spec.mjs
+diff --git a/index.html b/example/index.html
+similarity index 100%
+rename from index.html
+rename to example/index.html
+diff --git a/core-registry.js b/src/core-registry.js
+similarity index 100%
+rename from core-registry.js
+rename to src/core-registry.js
+diff --git a/emulator-engine.js b/src/emulator-engine.js
+similarity index 100%
+rename from emulator-engine.js
+rename to src/emulator-engine.js
+diff --git a/index.d.ts b/src/index.d.ts
+similarity index 100%
+rename from index.d.ts
+rename to src/index.d.ts
+diff --git a/index.js b/src/index.js
+similarity index 100%
+rename from index.js
+rename to src/index.js
+diff --git a/rewind-profiles.js b/src/rewind-profiles.js
+similarity index 71%
+rename from rewind-profiles.js
+rename to src/rewind-profiles.js
+index 34f5f38..d14bb8b 100644
+--- a/rewind-profiles.js
++++ b/src/rewind-profiles.js
+@@ -19,8 +19,15 @@
+ // option), granularity is frames between snapshots (lower = smoother
+ // rewind, more memory/CPU cost per second of rewind coverage).
+ export const REWIND_PROFILES = {
+-  psx:  { bufferSize: 512, granularity: 4 }, // large states, coarser snapshots
+-  n64:  { bufferSize: 256, granularity: 3 },
++  // NOTE: an earlier version of this file listed psx:512MB / n64:256MB,
++  // claiming to be "ported directly from ROM Player by Coops's own live
++  // production tuning." That was stale/wrong - those were the ORIGINAL,
++  // oversized values (~25x RetroArch defaults) that caused WASM heap
++  // pressure and save-state failures on heavy cores in production, and
++  // were already scaled down there before this file was written. Corrected
++  // 2026-08-14 to match ROM Player's actual current production values.
++  psx:  { bufferSize: 96, granularity: 4 }, // large states, coarser snapshots
++  n64:  { bufferSize: 64, granularity: 3 },
+   gba:  { bufferSize: 256, granularity: 1 }, // tiny states, fine-grained
+   snes: { bufferSize: 256, granularity: 1 },
+   nes:  { bufferSize: 128, granularity: 1 },
+diff --git a/core-registry.test.mjs b/test/core-registry.test.mjs
+similarity index 100%
+rename from core-registry.test.mjs
+rename to test/core-registry.test.mjs
+diff --git a/dom-mock.mjs b/test/dom-mock.mjs
+similarity index 100%
+rename from dom-mock.mjs
+rename to test/dom-mock.mjs
+diff --git a/emulator-engine.test.mjs b/test/emulator-engine.test.mjs
+similarity index 100%
+rename from emulator-engine.test.mjs
+rename to test/emulator-engine.test.mjs
+diff --git a/harness.mjs b/test/harness.mjs
+similarity index 100%
+rename from harness.mjs
+rename to test/harness.mjs
+diff --git a/rewind-and-theming.test.mjs b/test/rewind-and-theming.test.mjs
+similarity index 98%
+rename from rewind-and-theming.test.mjs
+rename to test/rewind-and-theming.test.mjs
+index 465d262..a512561 100644
+--- a/rewind-and-theming.test.mjs
++++ b/test/rewind-and-theming.test.mjs
+@@ -18,7 +18,7 @@ async function boot(engine, systemId, rom, opts) {
+ describe("rewind-profiles.js", () => {
+   test("getRewindProfile returns a system-specific profile when one exists", () => {
+     const profile = getRewindProfile("psx");
+-    assertEquals(profile.bufferSize, 512);
++    assertEquals(profile.bufferSize, 96);
+     assertEquals(profile.granularity, 4);
+   });
+ 
+@@ -63,7 +63,7 @@ describe("EmulatorEngine rewind options", () => {
+     await boot(engine, "psx", "game.cue", { biosUrl: "bios.bin" });
+     assertEquals(globalThis.EJS_rewindEnabled, true);
+     assertEquals(globalThis.EJS_rewindGranularity, 4);
+-    assertEquals(globalThis.EJS_defaultOptions.rewind_buffer_size, "512");
++    assertEquals(globalThis.EJS_defaultOptions.rewind_buffer_size, "96");
+     assertEquals(globalThis.EJS_defaultOptions.rewind_granularity, "4");
+   });
+ 
+diff --git a/run.mjs b/test/run.mjs
+similarity index 100%
+rename from run.mjs
+rename to test/run.mjs
